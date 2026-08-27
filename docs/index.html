@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home Depot Deal Finder</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <span class="brand-mark">HD</span>
+        <span class="brand-name">Deal Finder</span>
+      </div>
+      <div class="stats" id="stats">Loading deals&hellip;</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="filters">
+      <input id="search" type="search" placeholder="Search deals (e.g. drill, patio, mulch)" />
+
+      <select id="category">
+        <option value="">All categories</option>
+      </select>
+
+      <select id="zip">
+        <option value="">All stores/ZIPs</option>
+      </select>
+
+      <select id="min-discount">
+        <option value="0">Any discount</option>
+        <option value="20">20% off+</option>
+        <option value="30">30% off+</option>
+        <option value="40">40% off+</option>
+        <option value="50">50% off+</option>
+        <option value="70">70% off+</option>
+        <option value="90">90% off+</option>
+      </select>
+
+      <input id="max-price" type="number" min="0" placeholder="Max price" />
+
+      <label class="checkbox">
+        <input id="in-stock" type="checkbox" />
+        In stock only
+      </label>
+
+      <select id="sort">
+        <option value="discount_desc">Biggest discount</option>
+        <option value="price_asc">Price: low to high</option>
+        <option value="price_desc">Price: high to low</option>
+      </select>
+    </section>
+
+    <section id="grid" class="grid" aria-live="polite"></section>
+
+    <div id="empty" class="empty hidden">
+      No deals match your filters. Try widening the discount range or
+      clearing a filter.
+    </div>
+
+    <div class="pager">
+      <button id="load-more" class="btn hidden">Load more</button>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      Unofficial, independent project — not affiliated with The Home Depot.
+      Deals are refreshed periodically by an automated scan of
+      homedepot.com and may be out of date; always verify price and stock
+      on the product page before heading to the store.
+    </div>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -1,4 +1,14 @@
-"""Scan every configured target/ZIP combination and upsert results into the DB."""
+"""Scan every configured target/ZIP combination for deals.
+
+`collect_deals()` is the shared core: it just returns a flat list of deal
+dicts and has no opinion about where they end up. Two things build on it:
+
+- `run_scan()` upserts them into the SQLite DB (used by the self-hosted
+  FastAPI app / scripts/scrape_once.py).
+- `scripts/build_static_site.py` writes them straight to a static
+  deals.json for the GitHub Pages deployment — no DB involved there, since
+  every GitHub Actions run starts fresh and does a full scan anyway.
+"""
 
 import datetime
 import logging
@@ -13,6 +23,30 @@ from app.scraper.parser import parse_search_page
 from app.scraper.targets import TARGETS
 
 logger = logging.getLogger(__name__)
+
+
+def collect_deals(zip_codes: list[str] | None = None, min_discount_percent: float | None = None) -> list[dict]:
+    """Scan every target for every ZIP and return deduped deal dicts."""
+    zip_codes = zip_codes if zip_codes is not None else settings.zip_code_list
+    min_discount = settings.min_discount_percent if min_discount_percent is None else min_discount_percent
+
+    by_id: dict[str, dict] = {}
+    for zip_code in zip_codes:
+        for target in TARGETS:
+            logger.info("Scanning %s for ZIP %s", target.name, zip_code)
+            try:
+                html = fetch_rendered_html(target.url, zip_code=zip_code)
+            except Exception:
+                logger.exception("Failed to load %s for ZIP %s", target.url, zip_code)
+                continue
+
+            deals = parse_search_page(html, category=target.category, store_id=None, zip_code=zip_code)
+            deals = [d for d in deals if (d["discount_percent"] or 0) >= min_discount]
+
+            for d in deals:
+                by_id[d["id"]] = d  # last store/ZIP scanned for a given item wins
+
+    return list(by_id.values())
 
 
 def upsert_deals(db: Session, deals: list[dict]) -> int:
@@ -45,38 +79,21 @@ def mark_stale_inactive(db: Session, seen_ids: set[str], cutoff_hours: int = 48)
 
 
 def run_scan() -> dict:
+    """Scan and upsert into the SQLite DB (self-hosted FastAPI app path)."""
     init_db()
+    deals = collect_deals()
+
     db = SessionLocal()
-    seen_ids: set[str] = set()
-    total_found = 0
-
     try:
-        for zip_code in settings.zip_code_list:
-            for target in TARGETS:
-                logger.info("Scanning %s for ZIP %s", target.name, zip_code)
-                try:
-                    html = fetch_rendered_html(target.url, zip_code=zip_code)
-                except Exception:
-                    logger.exception("Failed to load %s for ZIP %s", target.url, zip_code)
-                    continue
-
-                deals = parse_search_page(
-                    html, category=target.category, store_id=None, zip_code=zip_code
-                )
-                deals = [d for d in deals if (d["discount_percent"] or 0) >= settings.min_discount_percent]
-
-                upsert_deals(db, deals)
-                seen_ids.update(d["id"] for d in deals)
-                total_found += len(deals)
-                db.commit()
-
-        stale_count = mark_stale_inactive(db, seen_ids)
+        upsert_deals(db, deals)
+        db.commit()
+        stale_count = mark_stale_inactive(db, {d["id"] for d in deals})
         db.commit()
     finally:
         db.close()
 
-    logger.info("Scan complete: %s deals kept, %s marked stale", total_found, stale_count)
-    return {"deals_found": total_found, "marked_stale": stale_count}
+    logger.info("Scan complete: %s deals kept, %s marked stale", len(deals), stale_count)
+    return {"deals_found": len(deals), "marked_stale": stale_count}
 
 
 if __name__ == "__main__":

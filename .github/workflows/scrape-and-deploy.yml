@@ -1,0 +1,50 @@
+name: Scrape Home Depot deals and update site
+
+on:
+  schedule:
+    # Every 3 hours. Adjust to taste — more often means fresher deals but
+    # more Actions minutes used (playwright + a handful of page loads
+    # takes a few minutes per run).
+    - cron: "0 */3 * * *"
+  workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Scrape Home Depot and build deals.json
+        env:
+          # Override defaults here, or add repo Settings > Secrets and
+          # variables > Actions > Variables to set these without editing
+          # the workflow file.
+          HD_ZIP_CODES: ${{ vars.HD_ZIP_CODES || '10001,60601,90001,30301' }}
+          MIN_DISCOUNT_PERCENT: ${{ vars.MIN_DISCOUNT_PERCENT || '20' }}
+          HEADLESS: "true"
+        run: python scripts/build_static_site.py
+
+      - name: Commit and push updated deals.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- docs/deals.json; then
+            echo "No deal changes, skipping commit."
+          else
+            git add docs/deals.json
+            git commit -m "Update deals.json ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+            git push
+          fi
