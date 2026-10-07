@@ -21,9 +21,3 @@ jobs:
 
       - name: Capture Home Depot pages
         run: python scripts/debug_capture.py
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: debug-capture
-          path: debug_capture/
-          retention-days: 3
