@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import SessionLocal, init_db
 from app.models import Deal
-from app.scraper.browser import fetch_rendered_html
+from app.scraper.browser import search_and_fetch_html
 from app.scraper.parser import parse_search_page
 from app.scraper.targets import TARGETS
 
@@ -35,9 +35,9 @@ def collect_deals(zip_codes: list[str] | None = None, min_discount_percent: floa
         for target in TARGETS:
             logger.info("Scanning %s for ZIP %s", target.name, zip_code)
             try:
-                html = fetch_rendered_html(target.url, zip_code=zip_code)
+                html = search_and_fetch_html(target.query, zip_code=zip_code)
             except Exception:
-                logger.exception("Failed to load %s for ZIP %s", target.url, zip_code)
+                logger.exception("Failed to search %r for ZIP %s", target.query, zip_code)
                 continue
 
             deals = parse_search_page(html, category=target.category, store_id=None, zip_code=zip_code)

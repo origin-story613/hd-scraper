@@ -3,6 +3,7 @@ uvicorn[standard]==0.34.0
 SQLAlchemy==2.0.36
 pydantic-settings==2.7.1
 playwright==1.49.1
+playwright-stealth==1.0.6
 APScheduler==3.10.4
 python-dotenv==1.0.1
 beautifulsoup4==4.12.3
