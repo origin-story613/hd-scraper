@@ -10,3 +10,4 @@ deals.db
 *.egg-info/
 .DS_Store
 node_modules/
+debug_capture/

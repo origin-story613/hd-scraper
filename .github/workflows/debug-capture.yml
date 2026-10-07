@@ -1,0 +1,29 @@
+name: Debug capture (manual)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Capture Home Depot pages
+        run: python scripts/debug_capture.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debug-capture
+          path: debug_capture/
+          retention-days: 3
