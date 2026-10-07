@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Round 5: same as round 3 (real search box + ZIP modal), using the
-hand-rolled stealth init script now in browser.py (playwright-stealth
-turned out to be broken under modern setuptools -- see browser.py's
-docstring) instead of the third-party package.
+"""Round 6: test two category/browse URLs the user found by browsing
+homedepot.com directly (not guessed), to see if they dodge the
+bot-mitigation confirmed on /s/ search pages.
 
 Usage: python scripts/debug_capture.py
 """
@@ -18,6 +17,11 @@ from bs4 import BeautifulSoup  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 from app.scraper.browser import USER_AGENT, _STEALTH_INIT_SCRIPT  # noqa: E402
+
+CANDIDATE_URLS = [
+    "https://www.homedepot.com/b/Special-Values/N-5yc1vZ7",
+    "https://www.homedepot.com/c/Savings_Center?NCNI-5",
+]
 
 BLOCK_PHRASES = [
     "pardon our interruption", "access denied", "are you a robot",
@@ -63,22 +67,19 @@ def main():
         context.add_init_script(_STEALTH_INIT_SCRIPT)
         page = context.new_page()
 
-        print("=== Loading homepage (hand-rolled stealth) ===")
         page.goto("https://www.homedepot.com/", wait_until="domcontentloaded", timeout=30000)
         page.wait_for_timeout(2000)
-        print(f"title: {page.title()!r}")
-        print(f"navigator.webdriver = {page.evaluate('navigator.webdriver')!r}")
+        print(f"homepage title: {page.title()!r}")
 
-        print("=== Using the real on-page search box (stealth) ===")
-        box = page.locator('[data-testid="typeahead-search-field-input"]').first
-        box.click(timeout=10000)
-        box.fill("clearance")
-        page.wait_for_timeout(500)
-        box.press("Enter")
-        page.wait_for_timeout(4000)
-
-        print(f"status after search: final url: {page.url}  title: {page.title()!r}")
-        summarize_html("search-box-result-stealth", page.content())
+        for url in CANDIDATE_URLS:
+            print(f"=== Trying: {url} ===")
+            try:
+                resp = page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(4000)
+                print(f"status: {resp.status if resp else 'n/a'}  final url: {page.url}  title: {page.title()!r}")
+                summarize_html(url, page.content())
+            except Exception as e:
+                print(f"FAILED: {e}\n")
 
         context.close()
         browser.close()
