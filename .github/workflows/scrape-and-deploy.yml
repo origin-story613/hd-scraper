@@ -1,11 +1,16 @@
 name: Scrape Home Depot deals and update site
 
 on:
-  schedule:
-    # Every 3 hours. Adjust to taste — more often means fresher deals but
-    # more Actions minutes used (playwright + a handful of page loads
-    # takes a few minutes per run).
-    - cron: "0 */3 * * *"
+  # Scheduled runs are disabled: a live debug capture confirmed Home
+  # Depot blocks GitHub Actions' shared/datacenter IPs on every content
+  # page (not just search), independent of browser fingerprint. Scraping
+  # now runs from scripts/publish_static_site.sh on a residential network
+  # instead -- see the README's "GitHub Pages" section. Kept as
+  # workflow_dispatch only, for an occasional manual spot-check of
+  # whether that's changed.
+  #
+  # schedule:
+  #   - cron: "0 */3 * * *"
   workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
 
 permissions:
