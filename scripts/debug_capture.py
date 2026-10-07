@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Round 2: find a working search URL and inspect the ZIP/store localizer
-modal. Round 1 revealed the guessed `?NCNI-5` suffix 403s, and surfaced
-real localizer testids (delivery-zip-button, my-store-button).
+"""Round 3: use Home Depot's own search box (typeahead-search-field-input)
+instead of guessing URLs directly -- round 2 showed /s/ and /b/ paths all
+403 with a generic "Error Page" on cold navigation, which only showed up
+on search/category paths (the homepage itself loads fine), consistent
+with bot-mitigation on those routes rather than a URL format issue. Also
+completes the ZIP modal flow to find the submit control.
 
 Usage: python scripts/debug_capture.py
 """
@@ -17,12 +20,6 @@ from bs4 import BeautifulSoup  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 from app.scraper.browser import USER_AGENT  # noqa: E402
-
-CANDIDATE_SEARCH_URLS = [
-    "https://www.homedepot.com/s/clearance",
-    "https://www.homedepot.com/s/clearance%20tools",
-    "https://www.homedepot.com/b/Clearance/N-5yc1vZc3uy",
-]
 
 BLOCK_PHRASES = [
     "pardon our interruption", "access denied", "are you a robot",
@@ -61,43 +58,52 @@ def summarize_html(label: str, html: str):
     print()
 
 
-def try_search_urls(page):
-    for url in CANDIDATE_SEARCH_URLS:
-        print(f"=== Trying search URL: {url} ===")
-        try:
-            resp = page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(4000)
-            print(f"status: {resp.status if resp else 'n/a'}  final url: {page.url}  title: {page.title()!r}")
-            summarize_html(url, page.content())
-        except Exception as e:
-            print(f"FAILED: {e}\n")
+def use_real_search_box(page):
+    print("=== Using the real on-page search box ===")
+    page.goto("https://www.homedepot.com/", wait_until="domcontentloaded", timeout=30000)
+    page.wait_for_timeout(3000)
+
+    box = page.locator('[data-testid="typeahead-search-field-input"]').first
+    if box.count() == 0:
+        print("search box not found")
+        return
+    box.click(timeout=5000)
+    box.fill("clearance")
+    page.wait_for_timeout(1000)
+    box.press("Enter")
+    page.wait_for_timeout(5000)
+
+    print(f"status after search: final url: {page.url}  title: {page.title()!r}")
+    summarize_html("search-box-result", page.content())
 
 
-def inspect_zip_modal(page):
-    print("=== Inspecting ZIP/store localizer modal ===")
-    try:
-        page.goto("https://www.homedepot.com/", wait_until="domcontentloaded", timeout=30000)
-        page.wait_for_timeout(3000)
-        btn = page.locator('[data-testid="delivery-zip-button"]').first
-        if btn.count() == 0:
-            print("delivery-zip-button not found on homepage")
-            return
-        btn.click(timeout=5000)
-        page.wait_for_timeout(2000)
-        html = page.content()
-        soup = BeautifulSoup(html, "html.parser")
+def complete_zip_flow(page):
+    print("=== Completing ZIP modal flow ===")
+    page.goto("https://www.homedepot.com/", wait_until="domcontentloaded", timeout=30000)
+    page.wait_for_timeout(3000)
 
-        for inp in soup.select("input"):
-            attrs = " ".join(f'{k}="{v}"' for k, v in inp.attrs.items())
-            print(f"  input: <input {attrs}>")
+    btn = page.locator('[data-testid="delivery-zip-button"]').first
+    if btn.count() == 0:
+        print("delivery-zip-button not found")
+        return
+    btn.click(timeout=5000)
+    page.wait_for_timeout(1500)
 
-        for el in soup.select("[data-testid]"):
-            tid = el.get("data-testid", "")
-            if re.search(r"zip|submit|apply|update|modal|dialog", tid, re.I):
-                text = (el.get_text(strip=True) or "")[:30]
-                print(f"  candidate modal element: <{el.name} data-testid={tid!r}> text={text!r}")
-    except Exception as e:
-        print(f"FAILED: {e}")
+    zip_input = page.get_by_placeholder("Enter ZIP Code").first
+    if zip_input.count() == 0:
+        print("zip input not found after opening modal")
+        return
+    zip_input.click(timeout=5000)
+    zip_input.fill("10001")
+    page.wait_for_timeout(1000)
+
+    html = page.content()
+    soup = BeautifulSoup(html, "html.parser")
+    for el in soup.select("button"):
+        text = (el.get_text(strip=True) or "")[:30]
+        tid = el.get("data-testid", "")
+        if text or tid:
+            print(f"  button after typing zip: data-testid={tid!r} text={text!r}")
     print()
 
 
@@ -107,8 +113,8 @@ def main():
         context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1400, "height": 1000})
         page = context.new_page()
 
-        try_search_urls(page)
-        inspect_zip_modal(page)
+        use_real_search_box(page)
+        complete_zip_flow(page)
 
         context.close()
         browser.close()
