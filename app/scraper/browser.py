@@ -15,11 +15,15 @@ Three things make this trickier than a plain HTTP fetch:
    via a live debug capture: even organically clicking the on-page search
    box and pressing Enter -- not a guessed URL -- got a 403 "Error Page"
    from plain headless Chromium, while the static homepage loaded fine).
-   `playwright-stealth` patches the common headless-detection fingerprints
-   (navigator.webdriver, missing Chrome runtime object, etc.). This may
-   not be enough on its own against a determined WAF -- if deals.json
-   stays empty after this, that's the next thing to dig into (see
-   README's troubleshooting note).
+   `_STEALTH_INIT_SCRIPT` below patches the common headless-detection
+   fingerprints (navigator.webdriver, missing Chrome runtime object, etc.)
+   that a page's own JS can check before deciding whether to block.
+   (We hand-roll this rather than depend on the playwright-stealth
+   package, which pulls in setuptools' pkg_resources -- removed in recent
+   setuptools releases -- and breaks on import.) This may not be enough
+   on its own against a determined WAF -- if deals.json stays empty after
+   this, that's the next thing to dig into (see README's troubleshooting
+   note).
 """
 
 import logging
@@ -27,7 +31,6 @@ import time
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
-from playwright_stealth import stealth_sync
 
 from app.config import settings
 
@@ -42,6 +45,32 @@ SEARCH_BOX_SELECTOR = '[data-testid="typeahead-search-field-input"]'
 ZIP_BUTTON_SELECTOR = '[data-testid="delivery-zip-button"]'
 ZIP_INPUT_PLACEHOLDER = "Enter ZIP Code"
 ZIP_SUBMIT_TEXT = "Update Delivery ZIP Code"
+
+# Patches the handful of properties sites commonly check to detect
+# automated/headless Chromium, before any page script runs.
+_STEALTH_INIT_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+window.chrome = window.chrome || { runtime: {} };
+const originalQuery = window.navigator.permissions.query;
+window.navigator.permissions.query = (parameters) => (
+    parameters.name === 'notifications'
+        ? Promise.resolve({ state: Notification.permission })
+        : originalQuery(parameters)
+);
+"""
+
+
+def _new_browser_and_page(p, headless: bool):
+    browser = p.chromium.launch(
+        headless=headless,
+        args=["--disable-blink-features=AutomationControlled"],
+    )
+    context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1400, "height": 1000})
+    context.add_init_script(_STEALTH_INIT_SCRIPT)
+    page = context.new_page()
+    return browser, context, page
 
 
 def set_store_by_zip(page, zip_code: str) -> bool:
@@ -81,10 +110,7 @@ def search_and_fetch_html(query: str, *, zip_code: str | None = None, headless: 
     headless = settings.headless if headless is None else headless
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
-        context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1400, "height": 1000})
-        page = context.new_page()
-        stealth_sync(page)
+        browser, context, page = _new_browser_and_page(p, headless)
 
         try:
             page.goto("https://www.homedepot.com/", wait_until="domcontentloaded", timeout=30000)
@@ -120,10 +146,7 @@ def fetch_rendered_html(url: str, *, zip_code: str | None = None, headless: bool
     headless = settings.headless if headless is None else headless
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
-        context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1400, "height": 1000})
-        page = context.new_page()
-        stealth_sync(page)
+        browser, context, page = _new_browser_and_page(p, headless)
 
         try:
             page.goto("https://www.homedepot.com/", wait_until="domcontentloaded", timeout=30000)

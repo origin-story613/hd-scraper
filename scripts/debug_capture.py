@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Round 4: same as round 3 (real search box + ZIP modal), but with
-playwright-stealth applied, to see if that's enough to get past the 403
-"Error Page" block confirmed in round 3.
+"""Round 5: same as round 3 (real search box + ZIP modal), using the
+hand-rolled stealth init script now in browser.py (playwright-stealth
+turned out to be broken under modern setuptools -- see browser.py's
+docstring) instead of the third-party package.
 
 Usage: python scripts/debug_capture.py
 """
@@ -15,9 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from bs4 import BeautifulSoup  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
-from playwright_stealth import stealth_sync  # noqa: E402
 
-from app.scraper.browser import USER_AGENT  # noqa: E402
+from app.scraper.browser import USER_AGENT, _STEALTH_INIT_SCRIPT  # noqa: E402
 
 BLOCK_PHRASES = [
     "pardon our interruption", "access denied", "are you a robot",
@@ -58,15 +58,16 @@ def summarize_html(label: str, html: str):
 
 def main():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
         context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1400, "height": 1000})
+        context.add_init_script(_STEALTH_INIT_SCRIPT)
         page = context.new_page()
-        stealth_sync(page)
 
-        print("=== Loading homepage (stealth) ===")
+        print("=== Loading homepage (hand-rolled stealth) ===")
         page.goto("https://www.homedepot.com/", wait_until="domcontentloaded", timeout=30000)
         page.wait_for_timeout(2000)
         print(f"title: {page.title()!r}")
+        print(f"navigator.webdriver = {page.evaluate('navigator.webdriver')!r}")
 
         print("=== Using the real on-page search box (stealth) ===")
         box = page.locator('[data-testid="typeahead-search-field-input"]').first
