@@ -24,11 +24,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-source .venv/bin/activate
-python scripts/build_static_site.py
-
 git fetch origin
 git rebase origin/HEAD
+
+source .venv/bin/activate
+python scripts/build_static_site.py
 
 if git diff --quiet -- docs/deals.json; then
   echo "No deal changes, skipping commit."
